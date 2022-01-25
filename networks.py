@@ -1,55 +1,48 @@
 import torch
 import numpy as np
-from typing import List
+from typing import List, Tuple
 
 class ReadoutNetwork(torch.nn.Module):
 
     def __init__(self, embedding_size: int = 128, hidden_size: int = 128, action_dims: List[int] = [6,10,10]) -> None: 
         
         super(ReadoutNetwork, self).__init__()
-        
-        self.__input_layer = torch.nn.Linear(embedding_size, hidden_size)
-        """
-        self.__readout_layers = torch.nn.ModuleList([torch.nn.Linear(hidden_size, action_dims[0]),
-                                                     torch.nn.Linear(hidden_size, action_dims[1]),
-                                                     torch.nn.Linear(hidden_size, action_dims[2])])
-        """
-        self.__readout_layer = torch.nn.Linear(hidden_size, np.prod(action_dims)) #np.sum(action_dims)
-        self.__input_activation = torch.nn.ReLU()
-        self.__readout_activation = torch.nn.Softmax(dim=1)
-        #self.__readout_activations = torch.nn.ModuleList([torch.nn.Softmax(dim=1), torch.nn.Softmax(dim=1), torch.nn.Softmax(dim=1)])
+
+        self.__rho = torch.nn.Sequential(
+            torch.nn.Linear(embedding_size, hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_size, np.prod(action_dims)),
+            torch.nn.Softmax(dim=1)
+        )
     
     def forward(self, h: torch.Tensor) -> torch.Tensor:
 
-        x = self.__input_activation(self.__input_layer(h))
-        """
-        x1 = self.__readout_activations[0](self.__readout_layers[0](x))
-        x2 = self.__readout_activations[1](self.__readout_layers[1](x))
-        x3 = self.__readout_activations[2](self.__readout_layers[2](x))
-        """
-        return self.__readout_activation(self.__readout_layer(x)) #torch.cat((x1,x2,x3), dim=1)
+        return self.__rho(h)
 
 
 class BackupNetwork(torch.nn.Module):
 
-    def __init__(self, embedding_size: int = 128, action_dims: List[int] = [6,10,10]) -> None:
+    def __init__(self, embedding_size: int = 128, hidden_size: int = 128, action_dims: List[int] = [6,10,10]) -> None:
         
         super(BackupNetwork, self).__init__()
 
-        self.__f_layer = torch.nn.Linear(2*embedding_size + 1 + np.prod(action_dims), embedding_size)
-        self.__g_layer = torch.nn.Linear(2*embedding_size + 1 + np.prod(action_dims), embedding_size)
-
-        self.__f_activation = torch.nn.ReLU()
-        self.__g_activation = torch.nn.Sigmoid()
+        self.__f = torch.nn.Sequential(
+            torch.nn.Linear(2*embedding_size + 1 + np.prod(action_dims), hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_size, embedding_size)
+        )
+        self.__g = torch.nn.Sequential(
+            torch.nn.Linear(2*embedding_size + 1 + np.prod(action_dims), hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_size, embedding_size),
+            torch.nn.Sigmoid()
+        )
 
     def forward(self, h: torch.Tensor, h_prime: torch.Tensor, reward: torch.Tensor, probs: torch.Tensor) -> torch.Tensor:
         
         x = torch.cat((h,h_prime,reward,probs), dim=1)
 
-        xf = self.__f_activation(self.__f_layer(x))
-        xg = self.__g_activation(self.__g_layer(x))
-
-        return xf*xg + h
+        return self.__f(x)*self.__g(x) + h
 
 class ResidualConvolutionalNetwork(torch.nn.Module):
 
@@ -85,7 +78,8 @@ class EmbeddingNetwork(ResidualConvolutionalNetwork):
                        channel_sizes: List[int] = [64,64,64,32],
                        kernels: List[int] = [3,3,3,1],
                        strides: List[int] = [1,1,1,1],
-                       embedding_size: int = 128):
+                       embedding_size: int = 128,
+                       hidden_size: int = 128):
 
         super().__init__(n_input_maps = state_dims[0], 
                          n_residual_blocks = n_residual_blocks, 
@@ -93,14 +87,17 @@ class EmbeddingNetwork(ResidualConvolutionalNetwork):
                          kernels = kernels,
                          strides = strides)
         
-        self.__readout_layer = torch.nn.Linear(state_dims[1]*state_dims[2]*channel_sizes[-1], embedding_size)
-        self.__readout_activation = torch.nn.ReLU()
+        self.__epsilon = torch.nn.Sequential(
+            torch.nn.Linear(state_dims[1]*state_dims[2]*channel_sizes[-1], hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_size, embedding_size),
+        )
 
     def forward(self, s: torch.Tensor) -> torch.Tensor:
 
         s = super().forward(s)
 
-        return self.__readout_activation(self.__readout_layer(s))
+        return self.__epsilon(s)
 
 class PolicyNetwork(ResidualConvolutionalNetwork):
 
@@ -109,55 +106,48 @@ class PolicyNetwork(ResidualConvolutionalNetwork):
                        channel_sizes: List[int] = [32,32,32,32],
                        kernels: List[int] = [3,3,3,1],
                        strides: List[int] = [1,1,1,1],
-                       embedding_size: int = 128):
+                       embedding_size: int = 128,
+                       hidden_size: int = 128,
+                       device = 'cpu'):
 
         super().__init__(n_input_maps = 1,
                          n_residual_blocks = n_residual_blocks, 
                          channel_sizes = channel_sizes,
                          kernels = kernels,
                          strides = strides)
-        """
-        self.__prior_layers = torch.nn.ModuleList([torch.nn.Linear(2*embedding_size*channel_sizes[-1], action_dims[0]),
-                                                   torch.nn.Linear(2*embedding_size*channel_sizes[-1], action_dims[1]),
-                                                   torch.nn.Linear(2*embedding_size*channel_sizes[-1], action_dims[2])])
-        self.__mlp_layers = torch.nn.ModuleList([torch.nn.Linear(embedding_size, action_dims[0]),
-                                                 torch.nn.Linear(embedding_size, action_dims[1]),
-                                                 torch.nn.Linear(embedding_size, action_dims[2])])
 
-        self.__prior_activations = torch.nn.ModuleList([torch.nn.Softmax(dim=1), torch.nn.Softmax(dim=1), torch.nn.Softmax(dim=1)])
-        self.__mlp_activations = torch.nn.ModuleList([torch.nn.Softmax(dim=1), torch.nn.Softmax(dim=1), torch.nn.Softmax(dim=1)])
-        """
-        self.__prior_layer = torch.nn.Linear(2*embedding_size*channel_sizes[-1], np.prod(action_dims)) #np.sum(action_dims)
-        self.__mlp_layer = torch.nn.Linear(embedding_size, np.prod(action_dims)) #np.sum(action_dims)
-        self.__prior_activation = torch.nn.Softmax(dim=1)
-        self.__mlp_activation = torch.nn.Softmax(dim=1)
+        self.__psi = torch.nn.Sequential(
+            torch.nn.Linear(embedding_size, hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_size, np.prod(action_dims))
+        )
 
-    def forward(self, h: torch.Tensor, h_primes: List[torch.Tensor], w_0: int = 0.5, w_1: int = 0.5) -> torch.Tensor:
+        self.__u = torch.nn.Sequential(
+            torch.nn.Linear(2*embedding_size*channel_sizes[-1], hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_size, 1)
+        )
 
-        new_dim = int(np.sqrt(2*h.size(dim=1)))
-        """
-        x1 = self.__mlp_activations[0](self.__mlp_layers[0](h))
-        x2 = self.__mlp_activations[1](self.__mlp_layers[1](h))
-        x3 = self.__mlp_activations[2](self.__mlp_layers[2](h))
+        self.__pi = torch.nn.Softmax(dim=1)
 
-        x = torch.cat((x1,x2,x3), dim=1)
-        """
-        x = self.__mlp_activation(self.__mlp_layer(h))
+        self.__device = device
 
-        y = []
-        for h_prime in h_primes:
-            y.append(torch.reshape(torch.cat((h, h_prime), dim=1), (-1,new_dim,new_dim)))
-        y = torch.unsqueeze(torch.cat(y, dim=0), 1)
-
-        y = super().forward(y)
-        """
-        y1 = self.__prior_activations[0](self.__prior_layers[0](y))
-        y2 = self.__prior_activations[1](self.__prior_layers[1](y))
-        y3 = self.__prior_activations[2](self.__prior_layers[2](y))
-
-        y = torch.cat((y1,y2,y3), dim=1)
-        """
-        y = self.__prior_activation(self.__prior_layer(y))
-        probs = (torch.mul(x, w_0) + torch.mul(y.mean(0), w_1))
+    def forward(self, h: torch.Tensor, h_primes: List[Tuple[int,torch.Tensor]], w_0: float = 0.5, w_1: float = 0.5) -> torch.Tensor:
         
-        return  probs
+        psi = self.__psi(h)
+        new_dim = int(np.sqrt(2*h.size(dim=1)))
+        x = []
+        for _, h_prime in h_primes:
+            x.append(torch.reshape(torch.cat((h, h_prime), dim=1), (-1,new_dim,new_dim)))
+        x = torch.unsqueeze(torch.cat(x, dim=0), 1)
+        x = self.__u(super().forward(x))
+        u = []
+        last_id = 0
+        for idx, (child_id, _) in enumerate(h_primes):
+            u.append(torch.zeros(1, child_id-last_id, device=self.__device))
+            u.append(torch.unsqueeze(x[idx], 0))
+            last_id = child_id+1
+        u.append(torch.zeros(1, psi.size(1)-last_id, device=self.__device))
+        u = torch.cat(u, dim=1)
+        
+        return  self.__pi(w_0*psi + w_1*u)

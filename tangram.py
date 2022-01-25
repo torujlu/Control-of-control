@@ -195,66 +195,7 @@ class Tangram(object):
 								mask[block*self.__n_grid*self.__n_grid + y*self.__n_grid + x] = 1
 		
 		return mask
-	"""
 	
-	def get_probs_mask(self):
-		probs_mask = np.zeros((self.__n_possible_blocks,self.__n_grid ,self.__n_grid))
-		for block in range(self.__n_possible_blocks):
-			if block not in self.__used_blocks:
-				for y in range(self.__n_grid):
-					for x in range(self.__n_grid):
-						if block==0 and y>0 and x < self.__n_grid-1:
-							if self.__state[0,y-1,x] and self.__state[0,y,x] and self.__state[0,y-1,x+1] and\
-								1-self.__state[1,y-1,x] and 1-self.__state[1,y,x] and 1-self.__state[1,y-1,x+1]:
-								probs_mask[block,y,x] = 1
-						if block==1 and y>0 and x < self.__n_grid-1:
-							if self.__state[0,y-1,x] and self.__state[0,y-1,x+1] and self.__state[0,y,x+1] and\
-								1-self.__state[1,y-1,x] and 1-self.__state[1,y-1,x+1] and 1-self.__state[1,y,x+1]:
-								probs_mask[block,y,x] = 1
-						if block==2 and y>0 and x < self.__n_grid-1:
-							if self.__state[0,y,x] and self.__state[0,y,x+1] and self.__state[0,y-1,x+1] and\
-								1-self.__state[1,y,x] and 1-self.__state[1,y,x+1] and 1-self.__state[1,y-1,x+1]:
-								probs_mask[block,y,x] = 1
-						if block==3 and y>0 and x < self.__n_grid-1:
-							if self.__state[0,y,x] and self.__state[0,y-1,x] and self.__state[0,y,x+1] and\
-								1-self.__state[1,y,x] and 1-self.__state[1,y-1,x] and 1-self.__state[1,y,x+1]:
-								probs_mask[block,y,x] = 1
-						if block==4 and x < self.__n_grid-2:
-							if self.__state[0,y,x] and self.__state[0,y,x+1] and self.__state[0,y,x+2] and\
-								1-self.__state[1,y,x] and 1-self.__state[1,y,x+1] and 1-self.__state[1,y,x+2]:
-								probs_mask[block,y,x] = 1
-						if block==5 and y > 1:
-							if self.__state[0,y,x] and self.__state[0,y-1,x] and self.__state[0,y-2,x] and\
-								1-self.__state[1,y,x] and 1-self.__state[1,y-1,x] and 1-self.__state[1,y-2,x]:
-								probs_mask[block,y,x] = 1
-		
-		return probs_mask
-	"""
-	"""
-	def get_probs_mask(self):
-		probs_mask = np.zeros((self.__n_possible_blocks,self.__n_grid ,self.__n_grid))
-		for block in range(self.__n_possible_blocks):
-			if block not in self.__used_blocks:
-				for y in range(self.__n_grid):
-					for x in range(self.__n_grid):
-						starting_point = np.ravel_multi_index((y,x), (self.__n_grid,self.__n_grid), order='F')
-
-						# define shape of primite building blocks:
-						form_block = self.__get_form_block(starting_point)
-
-						next_block = np.array(form_block[block])
-
-						# check if we didn't move 'around' grid, if not attach
-						if (
-							all(np.isin(next_block,np.arange(0,self.__n_grid**2))) and # did we move outside of grid?
-							all(~np.isin(next_block,self.__current_form)) and # is new BB overlapping with prev shape (can happen due to weird shapes of BBs)
-							~(any(np.isin(self.__low_bound,next_block)) and any(np.isin(self.__up_bound,next_block))) and # did we accidentally move from bottom to top of box (linear idx!)
-							~(any(np.isin(self.__left_bound,next_block)) and any(np.isin(self.__right_bound,next_block))) # did we accidentally move from left to right of box (linear idx!)
-						):
-					
-							probs_mask[block,y,x] = 1
-		return probs_mask
-	"""
 	def reset(self):
 
 		final_Form, final_Coord = self.__instantiate(self.__n_grid, self.__n_blocks, self.__n_possible_blocks)

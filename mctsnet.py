@@ -6,7 +6,7 @@ from networks import ReadoutNetwork, BackupNetwork, EmbeddingNetwork, PolicyNetw
 class MCTSnet(torch.nn.Module):
 
     def __init__(self, embedding_size: int = 128,
-                       readout_hidden_size: int = 128,
+                       hidden_size: int = 128,
                        action_dims: List[int] = [6,10,10],
                        state_dims: List[int] = [2,10,10],
                        embedding_n_residual_blocks: int = 3,
@@ -21,13 +21,12 @@ class MCTSnet(torch.nn.Module):
 
         super(MCTSnet, self).__init__()
         
-        self.__readout = ReadoutNetwork(embedding_size, readout_hidden_size, action_dims).to(device)
-        self.__backup = BackupNetwork(embedding_size, action_dims).to(device)
+        self.__readout = ReadoutNetwork(embedding_size, hidden_size, action_dims).to(device)
+        self.__backup = BackupNetwork(embedding_size, hidden_size, action_dims).to(device)
         self.__embedding = EmbeddingNetwork(state_dims, embedding_n_residual_blocks, embedding_channel_sizes,
-                                            embedding_kernels, embedding_strides, embedding_size).to(device)
+                                            embedding_kernels, embedding_strides, embedding_size, hidden_size).to(device)
         self.__policy = PolicyNetwork(action_dims, policy_n_residual_blocks, policy_channel_sizes,
-                                      policy_kernels, policy_strides, embedding_size).to(device)
-
+                                      policy_kernels, policy_strides, embedding_size, hidden_size, device).to(device)
 
         self.__saved_log_probs = []
         self.__archived_log_probs = []
@@ -74,8 +73,8 @@ class MCTSnet(torch.nn.Module):
                 h = current_node.get_h()
                 h_primes = []
                 
-                for (_, child) in children:
-                    h_primes.append(child.get_h())
+                for (child_id, child) in sorted(children):
+                    h_primes.append((child_id, child.get_h()))
                 
                 probs = self.__policy(h, h_primes)
                 current_node = current_node.next_node(probs)
@@ -89,11 +88,11 @@ class MCTSnet(torch.nn.Module):
                 current_node.expand()
 
             parent = current_node.get_parent()
-            while parent != None:
+            while not(current_node.is_root()):
                 h = parent.get_h()
                 h_prime = current_node.get_h()
                 reward = current_node.get_reward()
-                probs = parent.get_probs()
+                probs = current_node.get_probs()
                 parent.set_h(self.__backup(h, h_prime, reward, probs))
                 current_node = parent
                 parent = current_node.get_parent()

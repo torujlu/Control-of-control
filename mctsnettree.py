@@ -10,10 +10,10 @@ class MCTSnetTree():
         self.__env = env
         self.__embedding_size = embedding_size
         self.__device = device
-        self.__root = MCTSnetNode(None, self)
+        self.__root = MCTSnetNode(None, self, True)
         env_state = env.get_state()
         state = torch.unsqueeze(torch.tensor(env_state[:2]), 0).to(device)
-        reward = None #torch.zeros(1,1).to(device)
+        reward = torch.zeros(1,1).to(device)
         self.__root.set_state(state)
         self.__root.set_reward(reward)
         self.__root.set_done(False)
@@ -23,9 +23,9 @@ class MCTSnetTree():
         return self.__root
         
     def set_root(self, root):
-        del self.__root
+        self.__root.make_root(False)
+        root.make_root(True)
         self.__root = root
-        self.__root.set_parent(None)
 
     def get_env(self):
         return self.__env
@@ -43,14 +43,14 @@ class MCTSnetTree():
 		
 class MCTSnetNode():
 	
-    def __init__(self, parent, tree):
+    def __init__(self, parent, tree, is_root):
 
         self.__device = tree.get_device()
-        #self.__action = action #torch.unsqueeze(torch.tensor([float(action)]), 0).to(self.__device) #, requires_grad=True
         self.__parent = parent
         self.__tree = tree
+        self.__is_root = is_root
         self.__children = []
-        self.__h = torch.zeros(1, tree.get_embedding_size(), requires_grad=True).to(self.__device) #
+        self.__h = torch.randn(1, tree.get_embedding_size()).to(self.__device)
     
     def get_state(self):
         return self.__state
@@ -76,13 +76,6 @@ class MCTSnetNode():
     def get_probs(self):
         return self.__probs
 
-    """
-    def set_action(self, action):
-        self.__action = action
-    
-    def get_action(self):
-        return self.__action
-    """
     def get_done(self):
         return self.__done
     
@@ -92,13 +85,16 @@ class MCTSnetNode():
     def get_parent(self):
         return self.__parent
     
-    def set_parent(self, parent):
-        self.__parent = parent
+    def make_root(self, is_root):
+        self.__is_root = is_root
+    
+    def is_root(self):
+        return self.__is_root
 
     def expand(self):
         for action in range(len(self.__probs_mask)):
             if self.__probs_mask[action]:
-                child = MCTSnetNode(self, self.__tree)
+                child = MCTSnetNode(self, self.__tree, False)
                 self.__children.append((action, child))
     
     def get_children(self):
@@ -111,30 +107,12 @@ class MCTSnetNode():
         self.__probs_mask = probs_mask
     
     def next_node(self, probs):
-        self.set_probs(probs)
         probs = torch.squeeze(probs)
         n_grid, _, _ = self.__tree.get_env().get_dims()
-        """
-        block_mask = torch.tensor(np.any(self.__probs_mask, axis=(1,2)).astype(float)).to(self.__device)
-        masked_block_probs = probs[:n_possible_blocks]*block_mask/torch.sum(probs[:n_possible_blocks]*block_mask)
-        m1 = Categorical(masked_block_probs)
-        block = m1.sample()
-        y_mask = torch.tensor(np.any(self.__action_mask[block.item()], axis=1).astype(float)).to(self.__device)
-        masked_y_probs = probs[n_possible_blocks:n_possible_blocks+n_grid]*y_mask/torch.sum(probs[n_possible_blocks:n_possible_blocks+n_grid]*y_mask)
-        m2 = Categorical(masked_y_probs)
-        y = m2.sample()
-        x_mask = torch.tensor(self.__action_mask[block.item(),y.item()]).to(self.__device)
-        masked_x_probs = probs[n_possible_blocks+n_grid:]*x_mask/torch.sum(probs[n_possible_blocks+n_grid:]*x_mask)
-        m3 = Categorical(masked_x_probs)
-        x = m3.sample()
-        env_action = np.array([block.item(),y.item(),x.item()])
-        action = env_action[0]*n_grid*n_grid + env_action[1]*n_grid + env_action[2]
-        """
-
         probs_mask = torch.tensor(self.__probs_mask).to(self.__device)
         masked_probs = probs*probs_mask
         if ~np.any(masked_probs.clone().cpu().detach().numpy()):
-            masked_probs = probs_mask     
+            masked_probs += probs_mask   
         masked_probs /= torch.sum(masked_probs)
         m = Categorical(masked_probs)
         action = m.sample().item()
@@ -150,8 +128,8 @@ class MCTSnetNode():
             if child_id == action:
                 child.set_state(state)
                 child.set_reward(reward)
-                #child.set_action(action)
                 child.set_done(done)
+                child.set_probs(torch.unsqueeze(probs, 0))
                 child.set_probs_mask(self.__tree.get_env().get_mask())
 
                 return child
