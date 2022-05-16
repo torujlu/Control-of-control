@@ -34,10 +34,10 @@ class MCTSNode():
         self.__action = action
         self.__parent = parent
         self.__tree = tree
-        n_grid, _, n_possible_blocks = tree.get_env().get_dims()
+        _, n_blocks, n_possible_blocks, _, _ = tree.get_env().get_dims()
         self.__children = []
-        self.__Q = np.zeros(n_possible_blocks*n_grid*n_grid)
-        self.__N = np.zeros(n_possible_blocks*n_grid*n_grid)
+        self.__Q = np.zeros(3*n_blocks*n_possible_blocks)
+        self.__N = np.zeros(3*n_blocks*n_possible_blocks)
     
     def get_reward(self):
         return self.__reward
@@ -89,11 +89,10 @@ class MCTSNode():
 
     def next_node(self, action):
         
-        n_grid, _, _ = self.__tree.get_env().get_dims()
-        block = action//n_grid//n_grid
-        y = (action - block*n_grid*n_grid)//n_grid
-        x = action - block*n_grid*n_grid - y*n_grid
-        env_action = np.array([block,y,x])
+        _, n_blocks, _, _, _ = self.__tree.get_env().get_dims()
+        block = action//(3*n_blocks)
+        loc = action - block*3*n_blocks
+        env_action = np.array([block,loc])
         _, env_reward, done = self.__tree.get_env().step(env_action)
 
         for (child_id, child) in self.__children:
@@ -112,18 +111,19 @@ class MCTSNode():
     def roll_out(self, gamma):
         done = self.get_done()
         time = 0
+        reward = 0
         while not done:
             action_mask = self.__tree.get_env().get_mask()
             action = np.random.choice(np.nonzero(action_mask)[0])
-            n_grid, _, _ = self.__tree.get_env().get_dims()
-            block = action//n_grid//n_grid
-            y = (action - block*n_grid*n_grid)//n_grid
-            x = action - block*n_grid*n_grid - y*n_grid
-            env_action = np.array([block,y,x])
+            _, n_blocks, _, _, _ = self.__tree.get_env().get_dims()
+            block = action//(3*n_blocks)
+            loc = action - block*3*n_blocks
+            env_action = np.array([block,loc])
 
             _, env_reward, done = self.__tree.get_env().step(env_action)
             time += 1
+            reward += (gamma**time)*env_reward
             
         self.__tree.get_env().revert(time)
         
-        return self.get_reward() + (gamma**time)*env_reward
+        return self.get_reward() + reward
