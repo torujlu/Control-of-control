@@ -1,20 +1,22 @@
+import torch
 import gc
 import numpy as np
+from torch.distributions import Categorical
 
+class MCTS2Tree():
 
-class MCTSTree():
-
-    def __init__(self, env):
+    def __init__(self, env, device = 'cpu'):
 
         self.__env = env
-        self.__root = MCTSNode(None, self, -1)
+        self.__device = device
+        self.__root = MCTS2Node(None, self, -1)
         self.__root.set_reward(0)
         self.__root.set_done(False)
         self.__root.set_action_mask(env.get_mask())
     
     def get_root(self):
         return self.__root
-        
+    
     def set_root(self, root):
         del self.__root
         self.__root = root
@@ -23,14 +25,19 @@ class MCTSTree():
     def get_env(self):
         return self.__env
     
+    def get_device(self):
+        return self.__device
+    
     def delete(self):
         self.__root.delete()
+        torch.cuda.empty_cache()
         gc.collect()
 
-class MCTSNode():
+class MCTS2Node():
 
     def __init__(self, parent, tree, action):
-
+        
+        self.__device = tree.get_device()
         self.__parent = parent
         self.__tree = tree
         self.__action = action
@@ -63,7 +70,7 @@ class MCTSNode():
     def expand(self):
         for action in range(len(self.__action_mask)):
             if self.__action_mask[action]:
-                child = MCTSNode(self, self.__tree, action)
+                child = MCTS2Node(self, self.__tree, action)
                 self.__children.append((action, child))
     
     def get_children(self):
@@ -86,19 +93,44 @@ class MCTSNode():
     
     def set_N(self, N):
         self.__N = N
+    
+    def get_log_prob(self):
+        return self.__log_prob
 
-    def next_node(self, action):
-        
+    def set_log_prob(self, log_prob):
+        self.__log_prob = log_prob
+    
+    def get_entropy(self):
+        return self.__entropy
+    
+    def set_entropy(self, entropy):
+        self.__entropy = entropy
+
+    def next_node(self, probs):
+        probs = torch.squeeze(probs).to(self.__device)
         _, n_blocks, _, _, _ = self.__tree.get_env().get_dims()
-        block = action//(3*n_blocks)
-        loc = action - block*3*n_blocks
+        action_mask = torch.tensor(self.__action_mask).to(self.__device)
+        masked_probs = probs*action_mask
+        if not torch.sum(masked_probs.clone()) > 0:
+            masked_probs += action_mask   
+        masked_probs /= torch.sum(masked_probs)
+        m = Categorical(masked_probs)
+        action = m.sample()
+        action_id = action.item()
+        block = action_id//(3*n_blocks)
+        loc = action_id - block*3*n_blocks
         env_action = np.array([block,loc])
-        _, env_reward, done = self.__tree.get_env().step(env_action)
+        #train_probs = masked_probs + 1e-4*(1-action_mask)
+        #train_probs /= torch.sum(train_probs)
+        #m_train = Categorical(train_probs)
 
+        _, env_reward, done = self.__tree.get_env().step(env_action)
         for (child_id, child) in self.__children:
             if child_id == action:
                 child.set_reward(env_reward)
                 child.set_done(done)
+                child.set_log_prob(m.log_prob(action)) #probs[action_id]
+                child.set_entropy(m.entropy())
                 child.set_action_mask(self.__tree.get_env().get_mask())
 
                 return child

@@ -21,16 +21,20 @@ class MCTS():
                 N = current_node.get_N()
                 action_mask = current_node.get_action_mask()
                 masked_Q = action_mask*Q + (action_mask - 1)*1e6
+                """
                 masked_N = action_mask*N + (action_mask - 1)
-                #unexplored = np.where(masked_N==0)[0]
-                #if len(unexplored)>0:
-                #    action = np.random.choice(unexplored)
-                #else:
+                unexplored = np.where(masked_N==0)[0]
+                if len(unexplored)>0:
+                    action = np.random.choice(unexplored)
+                else:
+                """
                 for action in range(len(N)):
-                    if N[action] > 0:
-                        masked_Q[action] += c*np.sqrt(np.log(np.sum(N))/N[action])
+                    #if N[action] > 0:
+                    masked_Q[action] += c*np.sqrt(np.log(np.sum(N)+1)/(N[action]+1))
+                    """
                     elif np.sum(N) > 0:
                         masked_Q[action] += c*np.sqrt(np.log(np.sum(N)))
+                    """
                 action = np.random.choice(np.where(masked_Q==np.max(masked_Q))[0])
                 current_node = current_node.next_node(action)
                 done = current_node.get_done()
