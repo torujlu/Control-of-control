@@ -1,8 +1,7 @@
 import numpy as np
 import torch
 from typing import List
-from networks import PolicyNetwork
-
+from networks import PolicyNetwork, ReadoutNetwork
 class MCTS2(torch.nn.Module):
 
     def __init__(self, action_dims: List[int] = [3,4,6],
@@ -14,9 +13,11 @@ class MCTS2(torch.nn.Module):
 
         super(MCTS2, self).__init__()
 
+        self.__policy = ReadoutNetwork(np.prod(action_dims), np.prod(action_dims), action_dims).to(device)
+        """
         self.__policy = PolicyNetwork(action_dims, policy_n_residual_blocks, policy_channel_sizes,
                                       policy_kernels, policy_strides, np.prod(action_dims), np.prod(action_dims), device).to(device)
-
+        """
         self.__saved_log_probs = []
         self.__saved_entropies = []
         self.__returns = []
@@ -85,12 +86,15 @@ class MCTS2(torch.nn.Module):
 
                 Q = current_node.get_Q()
                 N = current_node.get_N()
+                """
                 Q_primes = []
                 
                 for (child_id, child) in sorted(children):
                     Q_primes.append((child_id, torch.unsqueeze(torch.tensor(child.get_Q()).to(self.__device),0)))
                 
                 probs = self.__policy(torch.unsqueeze(torch.tensor(Q).to(self.__device),0), Q_primes)
+                """
+                probs = self.__policy(torch.unsqueeze(torch.tensor(Q).to(self.__device),0))
                 current_node = current_node.next_node(probs)
                 done = current_node.get_done()
                 children = current_node.get_children()

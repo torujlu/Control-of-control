@@ -111,7 +111,7 @@ class MCTSnetNode():
         _, n_blocks, _, _, _ = self.__tree.get_env().get_dims()
         action_mask = torch.tensor(self.__action_mask).to(self.__device)
         masked_probs = probs*action_mask
-        if not torch.sum(masked_probs.clone()) > 0:
+        if not torch.sum(masked_probs.clone()) > torch.finfo(float).eps:
             masked_probs += action_mask   
         masked_probs /= torch.sum(masked_probs)
         m = Categorical(masked_probs)

@@ -27,8 +27,11 @@ class MCTSnet(torch.nn.Module):
         self.__backup = BackupNetwork(embedding_size, backup_hidden_size).to(device)
         self.__embedding = EmbeddingNetwork(state_dims, embedding_n_residual_blocks, embedding_channel_sizes,
                                             embedding_kernels, embedding_strides, embedding_size).to(device)
+        self.__policy = ReadoutNetwork(embedding_size, readout_hidden_size, action_dims).to(device)
+        """
         self.__policy = PolicyNetwork(action_dims, policy_n_residual_blocks, policy_channel_sizes,
                                       policy_kernels, policy_strides, embedding_size, policy_hidden_size, device).to(device)
+        """
 
         self.__saved_log_probs = []
         self.__saved_entropies = []
@@ -99,12 +102,15 @@ class MCTSnet(torch.nn.Module):
             while children and not done:
 
                 h = current_node.get_h()
+                """
                 h_primes = []
                 
                 for (child_id, child) in sorted(children):
                     h_primes.append((child_id, child.get_h()))
                 
                 probs = self.__policy(h, h_primes)
+                """
+                probs = self.__policy(h)
                 current_node = current_node.next_node(probs)
                 done = current_node.get_done()
                 children = current_node.get_children()
